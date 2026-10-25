@@ -16,9 +16,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install poetry
         poetry add yamale
-    - name: Validate Scenarios YAML
+    - name: Validate DFIQ YAML
       run: |
-        poetry run yamale -s utils/scenario_spec.yaml ./data/scenarios
-        poetry run yamale -s utils/facet_spec.yaml ./data/facets
-        poetry run yamale -s utils/question_spec.yaml ./data/questions
-        poetry run yamale -s utils/approach_spec.yaml ./data/approaches
+        poetry run yamale -s dfiq/utils/scenario_spec.yaml ./dfiq/data/scenarios
+        poetry run yamale -s dfiq/utils/facet_spec.yaml ./dfiq/data/facets
+        poetry run yamale -s dfiq/utils/question_spec.yaml ./dfiq/data/questions

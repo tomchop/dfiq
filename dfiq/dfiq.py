@@ -32,54 +32,50 @@ class Component(object):
     """Base class for DFIQ components.
 
     Components are the building blocks of DFIQ. They represent different logical
-    entities: Scenarios, Facets, Questions, and Approaches. This base class
-    defines the attributes that all components share.
+    entities: Scenarios, Facets, and Questions. This base class defines the
+    attributes that all components share.
 
     Attributes:
-        id (str): The unique ID of the component, as described at dfiq.org/spec.
+        id (str, optional): The DFIQ ID of the component, as described at dfiq.org/spec.
+        uuid (str): The unique UUID of the component.
         name (str): The name of the component, often in the form of a question.
         description (str, optional): A few sentence description of the component.
         type (str, optional): The type of component.
         tags (set[str], optional): A set of tags associated with the component.
-        parent_ids (set[str], optional): A set of IDs of the component's parents.
-        child_ids (set[str], optional): A set of IDs of the component's children.
+        parent_ids (set[str], optional): A set of IDs or UUIDs of the component's parents.
+        child_ids (list[str], optional): A list of IDs of the component's children.
         is_internal (bool): Whether the component is private and for internal use only.
 
     Methods:
-        set_children(child_ids: set[str]): Sets the component's children.
+        set_children(child_ids: list[str]): Sets the component's children.
     """
 
     def __init__(
         self,
-        dfiq_id: str,
+        dfiq_id: str | None,
         uuid: str,
         name: str,
         description: str | None = None,
-        tags: set[str] | None = None,
-        parent_ids: set[str] | None = None,
+        tags: set[str] | list[str] | None = None,
+        parent_ids: set[str] | list[str] | None = None,
+        internal: bool = False,
     ) -> None:
         self.id = dfiq_id
         self.uuid = uuid
         self.name = name.rstrip()
         self.description = description
         self.type = None
-        self.tags = tags
-        self.parent_ids = parent_ids
-        self.child_ids = None
-        self.is_internal = False
-
-        if not self.tags:
-            self.tags = set()
+        self.tags = set(tags) if tags else set()
+        self.parent_ids = set(parent_ids) if parent_ids else set()
+        self.child_ids = []
+        self.is_internal = bool(internal)
 
         self.all_tags = set(self.tags)
-
-        if not self.parent_ids:
-            self.parent_ids = set()
 
         if isinstance(description, str):
             self.description = description.rstrip()
 
-        if self.id[1] == "0":
+        if self.id and len(self.id) > 1 and self.id[1] == "0":
             self.is_internal = True
 
     def set_children(self, child_ids: list) -> None:
@@ -87,36 +83,61 @@ class Component(object):
         self.child_ids = child_ids
 
 
-class Approach(Component):
+class Approach(object):
     """An Approach in DFIQ.
 
     Approaches are detailed explanations of how to answer a Question using a specific
-    method, including the required data, processing, and analysis steps. As there
-    is often more than one way to answer a question, there can be multiple Approaches
-    that answer a given Question using different techniques.
+    method, including the required data collection, processing, and analysis steps.
+    As there is often more than one way to answer a question, there can be multiple
+    Approaches that answer a given Question using different techniques.
 
     Attributes:
-        view (dict): A concise representation of how to perform this investigative approach.
+        name (str): The name of the approach.
+        description (str, optional): A detailed description of the approach.
+        tags (list[str]): A list of tags associated with the approach.
+        references (list[str]): Public reference links for the approach.
+        references_internal (list[str]): Internal reference links for the approach.
+        notes (dict): Coverage notes ('covered' and 'not_covered').
+        steps (list[dict]): Ordered list of investigative steps (collection, processing, analysis).
         type (str): The type of component, which is always "approach".
+        is_internal (bool): Whether the approach is internal.
     """
 
     def __init__(
         self,
-        dfiq_id: str,
-        uuid: str,
         name: str,
-        description: str,
-        tags: set[str] | None,
-        view: dict,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        references: list[str] | None = None,
+        references_internal: list[str] | None = None,
+        notes: dict | None = None,
+        steps: list[dict] | None = None,
+        internal: bool = False,
     ) -> None:
-        super().__init__(
-            dfiq_id, uuid, name, description, tags, parent_ids={dfiq_id.split(".")[0]}
+        self.name = name.rstrip()
+        self.description = (
+            description.rstrip() if isinstance(description, str) else description
         )
-        self.view = view
+        self.tags = tags or []
+        self.references = references or []
+        self.references_internal = references_internal or []
+        self.notes = notes or {}
+        self.steps = steps or []
         self.type = "approach"
+        self.is_internal = bool(internal)
 
-        if self.id[6] == "0":
-            self.is_internal = True
+    @classmethod
+    def from_dict(cls, data: dict) -> "Approach":
+        return cls(
+            name=data["name"],
+            description=data.get("description"),
+            tags=data.get("tags"),
+            references=data.get("references"),
+            references_internal=data.get("references_internal"),
+            notes=data.get("notes"),
+            steps=data.get("steps"),
+            internal=data.get("internal", False),
+        )
 
 
 class Question(Component):
@@ -128,33 +149,38 @@ class Question(Component):
 
     Attributes:
         type (str): The type of component, which is always "question".
+        approaches (list[Approach]): All Approaches associated with the Question.
     """
 
     def __init__(
         self,
-        dfiq_id: str,
+        dfiq_id: str | None,
         uuid: str,
         name: str,
         description: str | None,
-        tags: set[str] | None,
-        parent_ids: set[str],
+        tags: set[str] | list[str] | None,
+        parent_ids: set[str] | list[str] | None,
+        approaches: list[Approach] | None = None,
+        internal: bool = False,
     ) -> None:
-        super().__init__(dfiq_id, uuid, name, description, tags, parent_ids)
+        super().__init__(
+            dfiq_id, uuid, name, description, tags, parent_ids, internal=internal
+        )
         self.type = "question"
-
-    @property
-    def approaches(self) -> set[str]:
-        """All Approaches associated with a given Question."""
-        return self.child_ids
+        self.approaches = approaches or []
+        for approach in self.approaches:
+            if approach.tags:
+                self.all_tags.update(approach.tags)
 
 
 class Facet(Component):
     """A Facet in DFIQ.
 
-    Facets are used for intermediate-level grouping in DFIQ. A particular Facet can
-    be part of multiple different Scenarios and will contain multiple Questions. A
-    Facet breaks the larger Scenario into smaller logical pieces, but a Facet is
-    still too broad to answer directly; it must also be broken down (into Questions).
+    Facets are used for optional intermediate-level grouping in DFIQ. A particular
+    Facet can be part of multiple different Scenarios and will contain multiple
+    Questions. A Facet breaks the larger Scenario into smaller logical pieces, but
+    a Facet is still too broad to answer directly; it must also be broken down
+    (into Questions).
 
     Attributes:
         type (str): The type of component, which is always "facet".
@@ -162,18 +188,21 @@ class Facet(Component):
 
     def __init__(
         self,
-        dfiq_id: str,
+        dfiq_id: str | None,
         uuid: str,
         name: str,
         description: str | None,
-        tags: set[str] | None,
-        parent_ids: set[str],
+        tags: set[str] | list[str] | None,
+        parent_ids: set[str] | list[str] | None,
+        internal: bool = False,
     ) -> None:
-        super().__init__(dfiq_id, uuid, name, description, tags, parent_ids)
+        super().__init__(
+            dfiq_id, uuid, name, description, tags, parent_ids, internal=internal
+        )
         self.type = "facet"
 
     @property
-    def questions(self) -> set[str]:
+    def questions(self) -> list[str]:
         """All Questions associated with a given Facet."""
         return self.child_ids
 
@@ -182,22 +211,27 @@ class Scenario(Component):
     """A Scenario in DFIQ.
 
     A Scenario is the highest-level grouping in DFIQ. A Scenario is made of one or
-    more Facets (different "sides" of an investigation), which in turn are made up of
-    investigative Questions.
+    more Facets (different "sides" of an investigation) or directly linked Questions.
 
     Attributes:
         type (str): The type of component, which is always "scenario".
     """
 
     def __init__(
-        self, dfiq_id: str, uuid: str, name: str, description: str, tags: set[str] | None
+        self,
+        dfiq_id: str | None,
+        uuid: str,
+        name: str,
+        description: str,
+        tags: set[str] | list[str] | None,
+        internal: bool = False,
     ):
-        super().__init__(dfiq_id, uuid, name, description, tags)
+        super().__init__(dfiq_id, uuid, name, description, tags, internal=internal)
         self.type = "scenario"
 
     @property
-    def facets(self) -> set[str]:
-        """All Facets associated with a given Scenario."""
+    def facets(self) -> list[str]:
+        """All child Facets (or Questions) associated with a given Scenario."""
         return self.child_ids
 
 
@@ -236,7 +270,6 @@ class DFIQ:
             "Scenario": "scenarios",
             "Facet": "facets",
             "Question": "questions",
-            "Approach": "approaches",
         }
         self.components = {}
         self.graph = None
@@ -249,7 +282,6 @@ class DFIQ:
             "Scenario": None,
             "Facet": None,
             "Question": None,
-            "Approach": None,
         }
 
         if self.yaml_data_path:
@@ -266,29 +298,29 @@ class DFIQ:
         """Returns a list of all Scenarios in the DFIQ knowledge base."""
         return sorted(
             [c for c in self.components.values() if isinstance(c, Scenario)],
-            key=lambda x: x.id,
+            key=lambda x: x.id or x.uuid,
         )
 
     def facets(self) -> list[Facet]:
         """Returns a list of all Facets in the DFIQ knowledge base."""
         return sorted(
             [c for c in self.components.values() if isinstance(c, Facet)],
-            key=lambda x: x.id,
+            key=lambda x: x.id or x.uuid,
         )
 
     def questions(self) -> list[Question]:
         """Returns a list of all Questions in the DFIQ knowledge base."""
         return sorted(
             [c for c in self.components.values() if isinstance(c, Question)],
-            key=lambda x: x.id,
+            key=lambda x: x.id or x.uuid,
         )
 
     def approaches(self) -> list[Approach]:
         """Returns a list of all Approaches in the DFIQ knowledge base."""
-        return sorted(
-            [c for c in self.components.values() if isinstance(c, Approach)],
-            key=lambda x: x.id,
-        )
+        all_approaches = []
+        for question in self.questions():
+            all_approaches.extend(question.approaches)
+        return all_approaches
 
     def add_child_ids(self) -> None:
         """Adds the list of their child IDs to a component's `child_ids` attribute.
@@ -307,68 +339,63 @@ class DFIQ:
             self.components[dfiq_id].set_children(children)
 
     def add_child_tags(self) -> None:
-        """Adds tags from a Question's Approaches to that Question's `all_tags attribute."""
-        if not self.graph:
-            raise ValueError("DFIQ Graph needed before adding children.")
-
-        for dfiq_id, component in self.components.items():
-            parents = sorted(list(nx.DiGraph.predecessors(self.graph, dfiq_id)))
-            if self.components[dfiq_id].type == "approach":
-                for parent in parents:
-                    self.components[parent].all_tags = self.components[
-                        parent
-                    ].all_tags.union(self.components[dfiq_id].tags)
+        """Adds tags from a Question's Approaches to that Question's `all_tags` attribute."""
+        for component in self.components.values():
+            if isinstance(component, Question):
+                for approach in component.approaches:
+                    if approach.tags:
+                        component.all_tags = component.all_tags.union(approach.tags)
 
     @staticmethod
     def convert_yaml_object_to_dfiq_component(
         yaml_object: dict,
-    ) -> Scenario | Facet | Question | Approach | None:
+    ) -> Scenario | Facet | Question | None:
         """Takes a dict, loaded from a DFIQ YAML file, and converts to the appropriate dfiq.Component object."""
 
         assert yaml_object["type"] in (
             "scenario",
             "facet",
             "question",
-            "approach",
         ), "Object must be of known DFIQ type"
+
+        name = yaml_object.get("name") or yaml_object.get("display_name")
+        internal = yaml_object.get("internal", False)
 
         if yaml_object["type"] == "scenario":
             return Scenario(
-                yaml_object["id"],
+                yaml_object.get("id"),
                 yaml_object["uuid"],
-                yaml_object["display_name"],
+                name,
                 yaml_object.get("description"),
                 yaml_object.get("tags"),
+                internal=internal,
             )
 
         elif yaml_object["type"] == "facet":
             return Facet(
-                yaml_object["id"],
+                yaml_object.get("id"),
                 yaml_object["uuid"],
-                yaml_object["display_name"],
+                name,
                 yaml_object.get("description"),
                 yaml_object.get("tags"),
                 yaml_object.get("parent_ids"),
+                internal=internal,
             )
 
         elif yaml_object["type"] == "question":
+            approaches = [
+                Approach.from_dict(a)
+                for a in (yaml_object.get("approaches") or [])
+            ]
             return Question(
-                yaml_object["id"],
+                yaml_object.get("id"),
                 yaml_object["uuid"],
-                yaml_object["display_name"],
+                name,
                 yaml_object.get("description"),
                 yaml_object.get("tags"),
                 yaml_object.get("parent_ids"),
-            )
-
-        elif yaml_object["type"] == "approach":
-            return Approach(
-                yaml_object["id"],
-                yaml_object["uuid"],
-                yaml_object["display_name"],
-                yaml_object.get("description"),
-                yaml_object.get("tags"),
-                yaml_object.get("view"),
+                approaches=approaches,
+                internal=internal,
             )
 
         else:
@@ -383,7 +410,7 @@ class DFIQ:
         dfiq_type, validate any YAML files there, and load them into a dict.
 
         Args:
-            dfiq_type (str): The component type (Scenario, Facet, Question, or Approach).
+            dfiq_type (str): The component type (Scenario, Facet, or Question).
             yaml_data_path (str, optional): The base path holding the YAML files.
 
         """
@@ -426,7 +453,8 @@ class DFIQ:
                 )
 
                 if converted:
-                    component_dict[component_from_yaml["id"]] = converted
+                    key = component_from_yaml.get("id") or component_from_yaml["uuid"]
+                    component_dict[key] = converted
         return component_dict
 
     @staticmethod
@@ -463,9 +491,6 @@ class DFIQ:
         self.schemas["Question"] = yamale.make_schema(
             self._get_dfiq_file("utils", "question_spec.yaml")
         )
-        self.schemas["Approach"] = yamale.make_schema(
-            self._get_dfiq_file("utils", "approach_spec.yaml")
-        )
 
     def validate_dfiq_schema(self, yaml_file_path: str, component_type: str) -> bool:
         """Validate that a YAML file adheres to the appropriate DFIQ Schema."""
@@ -478,12 +503,12 @@ class DFIQ:
         return True
 
     def load_dfiq_items_from_yaml(self, yaml_data_path: str | None = None) -> None:
-        """Load all four types of DFIQ components from a base path."""
+        """Load all types of DFIQ components from a base path."""
         if not yaml_data_path:
             yaml_data_path = self.yaml_data_path
 
         self.components = {}
-        for dfiq_component in ["Scenario", "Facet", "Question", "Approach"]:
+        for dfiq_component in ["Scenario", "Facet", "Question"]:
             self.components.update(
                 self.load_yaml_files_by_type(dfiq_component, yaml_data_path)
             )
@@ -491,15 +516,18 @@ class DFIQ:
     def build_graph(self) -> None:
         """Create a nx.DiGraph linking all loaded DFIQ components."""
         self.graph = nx.DiGraph()
+        uuid_to_key = {}
         for dfiq_id, content in self.components.items():
             self.graph.add_node(dfiq_id)
+            uuid_to_key[content.uuid] = dfiq_id
             logging.debug(f"added node: {dfiq_id}")
 
         for dfiq_id, content in self.components.items():
             if content.parent_ids:
                 for parent_id in content.parent_ids:
-                    self.graph.add_edge(parent_id, dfiq_id)
-                    logging.debug(f"added edge: {parent_id} -> {dfiq_id}")
+                    resolved_parent = uuid_to_key.get(parent_id, parent_id)
+                    self.graph.add_edge(resolved_parent, dfiq_id)
+                    logging.debug(f"added edge: {resolved_parent} -> {dfiq_id}")
 
     def display_graph(self) -> None:
         """Display the DFIQ graph."""
@@ -639,32 +667,36 @@ class DFIQ:
         Args:
             allow_internal (bool): Check if generating from internal items is allowed.
         """
-        data_type_and_value = {}
-        processor_and_analysis_names = {}
+        collection_type_and_value = {}
+        processing_type_and_value = {}
         analysis_step_types = set()
         step_variables = set()
-        for dfiq_id, component in self.components.items():
-            if not isinstance(component, Approach):
+        for question in self.questions():
+            if not allow_internal and question.is_internal:
                 continue
 
-            if not allow_internal and component.is_internal:
-                continue
+            for approach in question.approaches:
+                if not allow_internal and approach.is_internal:
+                    continue
 
-            for d in component.view.get("data"):
-                if not data_type_and_value.get(d["type"]):
-                    data_type_and_value[d["type"]] = set()
-                data_type_and_value[d["type"]].add(d["value"])
+                for step in approach.steps:
+                    stage = step.get("stage")
+                    step_type = step.get("type")
+                    step_value = step.get("value")
 
-            for p in component.view.get("processors"):
-                if not processor_and_analysis_names.get(p["name"]):
-                    processor_and_analysis_names[p["name"]] = set()
+                    if stage == "collection":
+                        if not collection_type_and_value.get(step_type):
+                            collection_type_and_value[step_type] = set()
+                        collection_type_and_value[step_type].add(step_value)
+                    elif stage == "processing":
+                        if not processing_type_and_value.get(step_type):
+                            processing_type_and_value[step_type] = set()
+                        processing_type_and_value[step_type].add(step_value)
+                    elif stage == "analysis":
+                        analysis_step_types.add(step_type)
 
-                for analysis in p["analysis"]:
-                    processor_and_analysis_names[p["name"]].add(analysis["name"])
-
-                    for step in analysis["steps"]:
-                        analysis_step_types.add(step["type"])
-                        m = re.findall(r"\{[A-z0-9_ -]{2,}?\}", step["value"])
+                    if step_value:
+                        m = re.findall(r"\{[A-z0-9_ -]{2,}?\}", step_value)
                         if m:
                             step_variables.update(m)
 
@@ -677,15 +709,12 @@ class DFIQ:
             "https://github.com/ForensicArtifacts/artifacts). Using this type is preferred when "
             "the data is a host-based file/artifact, but other methods are available as well (if "
             "there isn't an existing relevant ForensicArtifact).",
-            "description": "Text description of the data type. `description` is often using in conjunction with "
-            "another data type to provide more context. It can also be used alone, either as a "
-            "placeholder or when more robust, programmatic data types do not fit.",
         }
 
         template = self.jinja_env.get_template("approach_glossary.jinja2")
         context = {
-            "data_type_and_value": data_type_and_value,
-            "processor_and_analysis_names": processor_and_analysis_names,
+            "collection_type_and_value": collection_type_and_value,
+            "processing_type_and_value": processing_type_and_value,
             "analysis_step_types": analysis_step_types,
             "step_variables": step_variables,
             "descriptions": descriptions,
